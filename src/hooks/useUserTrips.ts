@@ -181,3 +181,68 @@ export function useCreateDayItinerary() {
     },
   });
 }
+
+export interface CreateTripInput {
+  title: string;
+  destination: string;
+  country: string;
+  duration: number;
+}
+
+export function useCreateTrip() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (input: CreateTripInput) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      
+      // Create the trip
+      const { data: trip, error: tripError } = await supabase
+        .from('trips')
+        .insert({
+          user_id: user.id,
+          title: input.title,
+          destination: input.destination,
+          country: input.country,
+          duration: input.duration,
+        })
+        .select()
+        .single();
+      
+      if (tripError) throw tripError;
+      
+      // Create Day 1 automatically
+      const { data: day, error: dayError } = await supabase
+        .from('day_itineraries')
+        .insert({
+          trip_id: trip.id,
+          day_number: 1,
+          title: 'Day 1',
+        })
+        .select()
+        .single();
+      
+      if (dayError) throw dayError;
+      
+      return { trip, firstDay: day };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-trips'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-days'] });
+      toast({
+        title: 'Trip created!',
+        description: 'Your new trip is ready.',
+      });
+    },
+    onError: (error) => {
+      console.error('Error creating trip:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create trip. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+}
