@@ -10,11 +10,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   useUserTrips, 
   useTripDays, 
   useAddPlaceToItinerary,
-  useCreateDayItinerary 
+  useCreateDayItinerary,
+  useCreateTrip 
 } from '@/hooks/useUserTrips';
 import { useAuth } from '@/contexts/AuthContext';
 import { Place } from '@/types/trip';
@@ -28,7 +31,7 @@ interface AddToItineraryDialogProps {
   destination: string;
 }
 
-type Step = 'select-places' | 'select-trip' | 'select-day' | 'success';
+type Step = 'select-places' | 'select-trip' | 'create-trip' | 'select-day' | 'success';
 
 export function AddToItineraryDialog({ 
   open, 
@@ -43,10 +46,17 @@ export function AddToItineraryDialog({
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   
+  // Quick create trip form state
+  const [newTripTitle, setNewTripTitle] = useState('');
+  const [newTripDestination, setNewTripDestination] = useState('');
+  const [newTripCountry, setNewTripCountry] = useState('');
+  const [newTripDuration, setNewTripDuration] = useState(3);
+  
   const { data: userTrips, isLoading: tripsLoading } = useUserTrips();
   const { data: tripDays, isLoading: daysLoading } = useTripDays(selectedTripId);
   const addPlaceMutation = useAddPlaceToItinerary();
   const createDayMutation = useCreateDayItinerary();
+  const createTripMutation = useCreateTrip();
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -55,8 +65,13 @@ export function AddToItineraryDialog({
       setSelectedPlaces([]);
       setSelectedTripId(null);
       setSelectedDayId(null);
+      // Pre-fill destination from current trip
+      setNewTripTitle('');
+      setNewTripDestination(destination || '');
+      setNewTripCountry('');
+      setNewTripDuration(3);
     }
-  }, [open]);
+  }, [open, destination]);
 
   const selectedTrip = userTrips?.find(t => t.id === selectedTripId);
 
@@ -127,6 +142,23 @@ export function AddToItineraryDialog({
     onOpenChange(false);
   };
 
+  const handleCreateTrip = async () => {
+    if (!newTripTitle.trim() || !newTripDestination.trim() || !newTripCountry.trim()) return;
+    
+    const result = await createTripMutation.mutateAsync({
+      title: newTripTitle.trim(),
+      destination: newTripDestination.trim(),
+      country: newTripCountry.trim(),
+      duration: newTripDuration,
+    });
+    
+    // Select the newly created trip and proceed to select-day
+    setSelectedTripId(result.trip.id);
+    setStep('select-day');
+  };
+
+  const isCreateTripFormValid = newTripTitle.trim() && newTripDestination.trim() && newTripCountry.trim();
+
   if (!user) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -154,15 +186,17 @@ export function AddToItineraryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>
+        <DialogTitle>
             {step === 'select-places' && 'Select Places to Add'}
             {step === 'select-trip' && 'Choose Itinerary'}
+            {step === 'create-trip' && 'Create New Trip'}
             {step === 'select-day' && 'Choose Day'}
             {step === 'success' && 'Added Successfully!'}
           </DialogTitle>
           <DialogDescription>
             {step === 'select-places' && `Choose which places from ${destination} to add`}
-            {step === 'select-trip' && 'Select one of your trips'}
+            {step === 'select-trip' && 'Select one of your trips or create a new one'}
+            {step === 'create-trip' && 'Quick create a new trip to add your places'}
             {step === 'select-day' && `Adding ${selectedPlaces.length} place${selectedPlaces.length > 1 ? 's' : ''} to ${selectedTrip?.title}`}
             {step === 'success' && `${selectedPlaces.length} place${selectedPlaces.length > 1 ? 's' : ''} added to your itinerary`}
           </DialogDescription>
@@ -255,9 +289,29 @@ export function AddToItineraryDialog({
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : userTrips && userTrips.length > 0 ? (
+              ) : (
                 <div className="space-y-2 pb-4">
-                  {userTrips.map((trip) => (
+                  {/* Create New Trip Option - Always shown at top */}
+                  <button
+                    onClick={() => setStep('create-trip')}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-dashed border-primary/50 hover:border-primary hover:bg-primary/5 transition-all text-left"
+                  >
+                    <div className="h-14 w-14 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Plus className="h-6 w-6 text-primary" />
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-primary">Create New Trip</p>
+                      <p className="text-sm text-muted-foreground">
+                        Start a fresh itinerary
+                      </p>
+                    </div>
+                    
+                    <ChevronRight className="h-5 w-5 text-primary" />
+                  </button>
+
+                  {/* Existing trips */}
+                  {userTrips && userTrips.map((trip) => (
                     <button
                       key={trip.id}
                       onClick={() => handleTripSelect(trip.id)}
@@ -289,21 +343,84 @@ export function AddToItineraryDialog({
                     </button>
                   ))}
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <MapPin className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground mb-4">No trips yet</p>
-                  <Button onClick={() => navigate('/create')}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Your First Trip
-                  </Button>
-                </div>
               )}
             </ScrollArea>
             
             <div className="flex gap-3 pt-2 border-t">
               <Button variant="outline" onClick={() => setStep('select-places')} className="flex-1">
                 Back
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* Step 2b: Create Trip Form */}
+        {step === 'create-trip' && (
+          <>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="trip-title">Trip Title *</Label>
+                <Input
+                  id="trip-title"
+                  placeholder="e.g., My Japan Adventure"
+                  value={newTripTitle}
+                  onChange={(e) => setNewTripTitle(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="trip-destination">Destination *</Label>
+                <Input
+                  id="trip-destination"
+                  placeholder="e.g., Tokyo"
+                  value={newTripDestination}
+                  onChange={(e) => setNewTripDestination(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="trip-country">Country *</Label>
+                <Input
+                  id="trip-country"
+                  placeholder="e.g., Japan"
+                  value={newTripCountry}
+                  onChange={(e) => setNewTripCountry(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="trip-duration">Duration (days)</Label>
+                <Input
+                  id="trip-duration"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={newTripDuration}
+                  onChange={(e) => setNewTripDuration(parseInt(e.target.value) || 1)}
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 pt-2 border-t">
+              <Button variant="outline" onClick={() => setStep('select-trip')} className="flex-1">
+                Back
+              </Button>
+              <Button 
+                onClick={handleCreateTrip} 
+                className="flex-1"
+                disabled={!isCreateTripFormValid || createTripMutation.isPending}
+              >
+                {createTripMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    Create Trip
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </>
+                )}
               </Button>
             </div>
           </>
