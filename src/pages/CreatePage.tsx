@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -31,6 +32,7 @@ const purposes = [
 const travelers = ['Solo', 'Couple', 'Family', 'Friends', 'Group'];
 
 export default function CreatePage() {
+  const navigate = useNavigate();
   const [step, setStep] = useState<FlowStep>('select');
   const [selectedSource, setSelectedSource] = useState<ImportSource | null>(null);
   const [progress, setProgress] = useState(0);
@@ -56,11 +58,10 @@ export default function CreatePage() {
 
   const handlePersonalize = () => {
     toast.success('Trip created! Redirecting to your itinerary...');
-    setStep('select');
-    setSelectedSource(null);
-    setProgress(0);
-    setSelectedPurposes([]);
-    setSelectedTraveler('');
+    // Navigate to the Kyoto trip as a demo of the completed flow
+    setTimeout(() => {
+      navigate('/trip/trip-kyoto-1');
+    }, 1000);
   };
 
   const togglePurpose = (id: string) => {
