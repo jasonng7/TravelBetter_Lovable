@@ -3,21 +3,54 @@ import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { TripCard } from '@/components/trip/TripCard';
 import { sampleTrips } from '@/data/sampleTrips';
+import { Trip } from '@/types/trip';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { ArrowLeft, Plus, Plane } from 'lucide-react';
 import { useSavedTrips } from '@/hooks/useSavedTrips';
+import { useUserTrips, UserTrip } from '@/hooks/useUserTrips';
+
+// Convert UserTrip from DB to Trip format for TripCard
+function mapUserTripToTrip(userTrip: UserTrip): Trip {
+  return {
+    id: userTrip.id,
+    title: userTrip.title,
+    destination: userTrip.destination,
+    country: userTrip.country,
+    duration: userTrip.duration,
+    coverImage: userTrip.cover_image || 'https://images.unsplash.com/photo-1480796927426-f609979314bd?w=800',
+    author: {
+      id: 'current-user',
+      name: 'You',
+      username: 'you',
+      avatar: '',
+    },
+    remixCount: 0,
+    viewCount: 0,
+    createdAt: userTrip.created_at,
+    itinerary: [],
+    tags: [],
+  };
+}
 
 export default function TripsPage() {
   const navigate = useNavigate();
-  const { data: savedTripIds = [], isLoading } = useSavedTrips();
+  const { data: savedTripIds = [], isLoading: isSavedLoading } = useSavedTrips();
+  const { data: userTrips = [], isLoading: isUserTripsLoading } = useUserTrips();
   const [activeTab, setActiveTab] = useState('created');
 
-  // For demo, we'll show sample trips as "created" by user
-  const createdTrips = sampleTrips.slice(0, 2);
+  // Created trips from database
+  const createdTrips = userTrips.filter(t => !sampleTrips.some(st => st.id === t.id)).map(mapUserTripToTrip);
+  
+  // Remixed trips: user trips that have a remixed_from_id (would need to extend UserTrip type)
+  // For now, show sample remixed trips as placeholder
   const remixedTrips = sampleTrips.filter(t => t.remixedFrom);
+  
+  // Saved trips from database
   const savedTrips = sampleTrips.filter(t => savedTripIds.includes(t.id));
+  
+  const isLoading = isSavedLoading || isUserTripsLoading;
 
   const EmptyState = ({ message, cta }: { message: string; cta?: string }) => (
     <Card className="flex flex-col items-center justify-center p-8 text-center">
