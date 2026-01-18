@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useCreateTrip } from '@/hooks/useUserTrips';
+import { useCreateTripWithPlaces, type PlaceInput } from '@/hooks/useUserTrips';
 import { supabase } from '@/integrations/supabase/client';
 import { PersonalizationChatInterface } from '@/components/personalization/PersonalizationChatInterface';
 import type { AISuggestion } from '@/components/personalization/AISuggestionsList';
@@ -70,7 +70,7 @@ function parseDescription(description: string): { destination: string; country: 
 
 export default function CreatePage() {
   const navigate = useNavigate();
-  const createTrip = useCreateTrip();
+  const createTripWithPlaces = useCreateTripWithPlaces();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [step, setStep] = useState<FlowStep>('hero');
@@ -193,11 +193,27 @@ export default function CreatePage() {
     // Parse user description
     const parsed = parseDescription(tripDescription);
     
-    // Combine imported and AI-selected places
-    const allPlaceNames = [
-      ...extractedPlaces.filter(p => p.selected).map(p => p.name),
-      ...aiPlaces.map(p => p.name),
-    ];
+    // Combine imported and AI-selected places into PlaceInput objects
+    const importedPlaceInputs: PlaceInput[] = extractedPlaces
+      .filter(p => p.selected)
+      .map(p => ({
+        name: p.name,
+        nameLocal: p.nameLocal,
+        category: p.category || 'attraction',
+        description: p.description,
+        tips: p.tips,
+        source: 'user' as const,
+      }));
+    
+    const aiPlaceInputs: PlaceInput[] = aiPlaces.map(p => ({
+      name: p.name,
+      category: p.category || 'attraction',
+      description: p.description,
+      source: 'ai' as const,
+      confidence: p.confidence,
+    }));
+    
+    const allPlaces = [...importedPlaceInputs, ...aiPlaceInputs];
     
     // Create title from description or destination
     const title = tripDescription.length > 50 
@@ -205,19 +221,16 @@ export default function CreatePage() {
       : tripDescription || `Trip to ${parsed.destination}`;
     
     try {
-      createTrip.mutate(
+      createTripWithPlaces.mutate(
         {
           title,
           destination: parsed.destination,
           country: parsed.country,
           duration: parsed.duration,
+          places: allPlaces,
         },
         {
           onSuccess: (data) => {
-            // Store place names in session storage for the trip detail page to use
-            if (allPlaceNames.length > 0) {
-              sessionStorage.setItem(`trip-places-${data.trip.id}`, JSON.stringify(allPlaceNames));
-            }
             navigate(`/trip/${data.trip.id}`);
           },
           onError: () => {

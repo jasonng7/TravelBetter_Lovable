@@ -8,6 +8,7 @@ import { ShareModal } from '@/components/shared/ShareModal';
 import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { AnchorSelector } from '@/components/trip/AnchorSelector';
 import { EditModeBar } from '@/components/trip/EditModeBar';
+import { AddPlacesOptionsDialog } from '@/components/trip/AddPlacesOptionsDialog';
 import { AttributionBadge } from '@/components/trip/AttributionBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ export default function TripDetailPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
   const [anchorSelectorOpen, setAnchorSelectorOpen] = useState(false);
+  const [addPlacesDialogOpen, setAddPlacesDialogOpen] = useState(false);
   
   // Try to fetch from database first
   const { data: dbTrip, isLoading } = useTripDetail(tripId);
@@ -301,7 +303,13 @@ export default function TripDetailPage() {
               <Plus className="h-8 w-8 text-muted-foreground" />
             </div>
             <p className="text-muted-foreground">No places for this day</p>
-            <Button variant="link" className="mt-2">Add places</Button>
+            <Button 
+              variant="link" 
+              className="mt-2"
+              onClick={() => setAddPlacesDialogOpen(true)}
+            >
+              Add places
+            </Button>
           </div>
         )}
       </div>
@@ -349,6 +357,13 @@ export default function TripDetailPage() {
         places={allPlaces}
         currentAnchorId={anchorPlaceId}
         onSelectAnchor={setAsAnchor}
+      />
+
+      <AddPlacesOptionsDialog
+        open={addPlacesDialogOpen}
+        onOpenChange={setAddPlacesDialogOpen}
+        destination={trip.destination}
+        dayNumber={activeDay}
       />
       
       <BottomNav />

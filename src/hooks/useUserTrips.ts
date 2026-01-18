@@ -234,6 +234,7 @@ export function useCreateTrip() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-trips'] });
       queryClient.invalidateQueries({ queryKey: ['trip-days'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-detail'] });
       toast({
         title: 'Trip created!',
         description: 'Your new trip is ready.',
@@ -241,6 +242,139 @@ export function useCreateTrip() {
     },
     onError: (error) => {
       console.error('Error creating trip:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create trip. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+// Input for creating a trip with places
+export interface PlaceInput {
+  name: string;
+  nameLocal?: string;
+  category: string;
+  description?: string;
+  duration?: number;
+  cost?: string;
+  tips?: string[];
+  confidence?: number;
+  source: 'user' | 'ai';
+}
+
+export interface CreateTripWithPlacesInput {
+  title: string;
+  destination: string;
+  country: string;
+  duration: number;
+  places: PlaceInput[];
+}
+
+export function useCreateTripWithPlaces() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (input: CreateTripWithPlacesInput) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      
+      // 1. Create the trip
+      const { data: trip, error: tripError } = await supabase
+        .from('trips')
+        .insert({
+          user_id: user.id,
+          title: input.title,
+          destination: input.destination,
+          country: input.country,
+          duration: input.duration,
+        })
+        .select()
+        .single();
+      
+      if (tripError) throw tripError;
+      
+      // 2. Create day itineraries for all days
+      const dayInserts = Array.from({ length: input.duration }, (_, i) => ({
+        trip_id: trip.id,
+        day_number: i + 1,
+        title: `Day ${i + 1}`,
+      }));
+      
+      const { data: days, error: daysError } = await supabase
+        .from('day_itineraries')
+        .insert(dayInserts)
+        .select()
+        .order('day_number', { ascending: true });
+      
+      if (daysError) throw daysError;
+      
+      // 3. Insert all places into places table
+      if (input.places.length > 0) {
+        const placeInserts = input.places.map(p => ({
+          name: p.name,
+          name_local: p.nameLocal || null,
+          category: p.category || 'attraction',
+          description: p.description || null,
+          duration: p.duration || 60,
+          cost: p.cost || null,
+          tips: p.tips || [],
+        }));
+        
+        const { data: places, error: placesError } = await supabase
+          .from('places')
+          .insert(placeInserts)
+          .select();
+        
+        if (placesError) throw placesError;
+        
+        // 4. Distribute places across days evenly
+        const placesPerDay = Math.ceil(places.length / input.duration);
+        const itineraryPlaceInserts: {
+          day_itinerary_id: string;
+          place_id: string;
+          position: number;
+          source: string;
+          confidence: number | null;
+        }[] = [];
+        
+        places.forEach((place, index) => {
+          const dayIndex = Math.floor(index / placesPerDay);
+          const dayId = days[Math.min(dayIndex, days.length - 1)].id;
+          const positionInDay = index % placesPerDay;
+          const originalPlace = input.places[index];
+          
+          itineraryPlaceInserts.push({
+            day_itinerary_id: dayId,
+            place_id: place.id,
+            position: positionInDay,
+            source: originalPlace.source || 'user',
+            confidence: originalPlace.confidence || null,
+          });
+        });
+        
+        const { error: itineraryError } = await supabase
+          .from('itinerary_places')
+          .insert(itineraryPlaceInserts);
+        
+        if (itineraryError) throw itineraryError;
+      }
+      
+      return { trip, days };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-trips'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-days'] });
+      queryClient.invalidateQueries({ queryKey: ['trip-detail'] });
+      toast({
+        title: 'Trip created!',
+        description: 'Your itinerary is ready.',
+      });
+    },
+    onError: (error) => {
+      console.error('Error creating trip with places:', error);
       toast({
         title: 'Error',
         description: 'Failed to create trip. Please try again.',
