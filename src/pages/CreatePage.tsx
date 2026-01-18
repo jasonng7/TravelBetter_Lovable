@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useCreateTrip } from '@/hooks/useUserTrips';
 
 type FlowStep = 'hero' | 'preferences' | 'generating';
 
@@ -39,8 +40,48 @@ const placeTypes = [
   { id: 'nightlife', label: 'Nightlife' },
 ];
 
+// Helper to parse destination and duration from description
+function parseDescription(description: string): { destination: string; country: string; duration: number } {
+  // Look for patterns like "5 days in Tokyo" or "Tokyo for 3 days"
+  const daysMatch = description.match(/(\d+)\s*days?/i);
+  const duration = daysMatch ? parseInt(daysMatch[1], 10) : 3;
+  
+  // Common city -> country mapping
+  const cityCountryMap: Record<string, string> = {
+    'tokyo': 'Japan', 'kyoto': 'Japan', 'osaka': 'Japan',
+    'paris': 'France', 'london': 'UK', 'rome': 'Italy',
+    'bangkok': 'Thailand', 'singapore': 'Singapore',
+    'new york': 'USA', 'los angeles': 'USA', 'san francisco': 'USA',
+    'bali': 'Indonesia', 'seoul': 'South Korea',
+  };
+  
+  // Try to extract city name
+  let destination = 'Unknown';
+  let country = 'Unknown';
+  
+  const lowerDesc = description.toLowerCase();
+  for (const [city, countryName] of Object.entries(cityCountryMap)) {
+    if (lowerDesc.includes(city)) {
+      destination = city.charAt(0).toUpperCase() + city.slice(1);
+      country = countryName;
+      break;
+    }
+  }
+  
+  // Fallback: try to find "in [City]" pattern
+  if (destination === 'Unknown') {
+    const inMatch = description.match(/in\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
+    if (inMatch) {
+      destination = inMatch[1];
+    }
+  }
+  
+  return { destination, country, duration };
+}
+
 export default function CreatePage() {
   const navigate = useNavigate();
+  const createTrip = useCreateTrip();
   const [step, setStep] = useState<FlowStep>('hero');
   const [tripDescription, setTripDescription] = useState('');
   const [selectedPurposes, setSelectedPurposes] = useState<string[]>([]);
@@ -67,12 +108,48 @@ export default function CreatePage() {
     );
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setStep('generating');
-    toast.success('Generating your personalized itinerary...');
-    setTimeout(() => {
-      navigate('/trip/trip-kyoto-1');
-    }, 2000);
+    
+    // Parse user description
+    const parsed = parseDescription(tripDescription);
+    
+    // Parse duration from dates field if provided (e.g., "5 days" or date range)
+    let duration = parsed.duration;
+    if (dates) {
+      const daysFromDates = dates.match(/(\d+)\s*days?/i);
+      if (daysFromDates) {
+        duration = parseInt(daysFromDates[1], 10);
+      }
+    }
+    
+    // Create title from description or destination
+    const title = tripDescription.length > 50 
+      ? `${duration} Days in ${parsed.destination}`
+      : tripDescription || `Trip to ${parsed.destination}`;
+    
+    try {
+      createTrip.mutate(
+        {
+          title,
+          destination: parsed.destination,
+          country: parsed.country,
+          duration,
+        },
+        {
+          onSuccess: (data) => {
+            navigate(`/trip/${data.trip.id}`);
+          },
+          onError: () => {
+            setStep('preferences');
+            toast.error('Failed to create trip. Please try again.');
+          },
+        }
+      );
+    } catch {
+      setStep('preferences');
+      toast.error('Failed to create trip. Please try again.');
+    }
   };
 
   const handleImportAndContinue = () => {
