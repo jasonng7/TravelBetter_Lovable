@@ -69,6 +69,72 @@ export function useDeleteTrip() {
   });
 }
 
+export function useBatchDeleteTrips() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (tripIds: string[]) => {
+      if (!user?.id) throw new Error('Not authenticated');
+
+      for (const tripId of tripIds) {
+        // Get day_itineraries first
+        const { data: days } = await supabase
+          .from('day_itineraries')
+          .select('id')
+          .eq('trip_id', tripId);
+
+        if (days && days.length > 0) {
+          const dayIds = days.map(d => d.id);
+          
+          // Delete itinerary_places
+          await supabase
+            .from('itinerary_places')
+            .delete()
+            .in('day_itinerary_id', dayIds);
+        }
+
+        // Delete day_itineraries
+        await supabase
+          .from('day_itineraries')
+          .delete()
+          .eq('trip_id', tripId);
+
+        // Delete saved_trips references
+        await supabase
+          .from('saved_trips')
+          .delete()
+          .eq('trip_id', tripId);
+
+        // Delete the trip
+        await supabase
+          .from('trips')
+          .delete()
+          .eq('id', tripId)
+          .eq('user_id', user.id);
+      }
+
+      return tripIds;
+    },
+    onSuccess: (tripIds) => {
+      queryClient.invalidateQueries({ queryKey: ['user-trips'] });
+      toast({
+        title: 'Trips deleted',
+        description: `${tripIds.length} trip${tripIds.length > 1 ? 's' : ''} deleted successfully.`,
+      });
+    },
+    onError: (error) => {
+      console.error('Batch delete trips error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete trips. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
 export function useRenameTrip() {
   const queryClient = useQueryClient();
   const { user } = useAuth();

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
+import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,8 @@ export default function ExplorePage() {
     ? allPlaces.find(p => p.id === selectedPlace) 
     : allPlaces[0];
 
+  const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
+
   const handleAddToItinerary = () => {
     if (!user) {
       toast({
@@ -58,10 +61,9 @@ export default function ExplorePage() {
       navigate('/auth');
       return;
     }
-    toast({
-      title: 'Coming soon!',
-      description: 'Add to itinerary feature will be available soon.',
-    });
+    if (displayPlace) {
+      setAddToItineraryOpen(true);
+    }
   };
 
   const handleSearch = () => {
@@ -241,6 +243,15 @@ export default function ExplorePage() {
           </div>
         )}
       </div>
+
+      {displayPlace && (
+        <AddToItineraryDialog
+          open={addToItineraryOpen}
+          onOpenChange={setAddToItineraryOpen}
+          places={[displayPlace]}
+          destination={displayPlace.name}
+        />
+      )}
 
       <BottomNav />
     </div>

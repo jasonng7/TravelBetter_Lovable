@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, Sparkles, BookOpen, MapPin } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ArrowLeft, Sparkles, BookOpen, MapPin, Minus, Plus } from 'lucide-react';
 import { usePromptBuilder } from '@/hooks/usePromptBuilder';
 import { QuickSelectPills } from './QuickSelectPills';
 import { PromptTextArea } from './PromptTextArea';
@@ -18,8 +19,8 @@ interface PersonalizationChatInterfaceProps {
   importedPlaces: string[];
   duration: number;
   onBack: () => void;
-  onComplete: (selectedPlaces: AISuggestion[]) => void;
-  onSkip: () => void;
+  onComplete: (selectedPlaces: AISuggestion[], days: number) => void;
+  onSkip: (days: number) => void;
 }
 
 export function PersonalizationChatInterface({
@@ -35,6 +36,7 @@ export function PersonalizationChatInterface({
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
   const [promptInterpretation, setPromptInterpretation] = useState<string>();
   const [processingTime, setProcessingTime] = useState<number>();
+  const [tripDays, setTripDays] = useState(duration || 3);
 
   const {
     state,
@@ -66,7 +68,7 @@ export function PersonalizationChatInterface({
           userPrompt: displayPrompt,
           quickSelections: state.quickSelections,
           importedPlaces: importedPlaces,
-          duration,
+          duration: tripDays,
           existingPlaces: importedPlaces.map(name => ({ name })),
           preferences: {
             purposes: state.quickSelections.purposes,
@@ -122,7 +124,11 @@ export function PersonalizationChatInterface({
 
   const handleContinue = () => {
     const selectedPlaces = suggestions.filter(s => s.accepted);
-    onComplete(selectedPlaces);
+    onComplete(selectedPlaces, tripDays);
+  };
+
+  const handleSkip = () => {
+    onSkip(tripDays);
   };
 
   return (
@@ -174,6 +180,42 @@ export function PersonalizationChatInterface({
         {/* Customize Step */}
         {chatStep === 'customize' && (
           <>
+            {/* Days Input */}
+            <Card className="p-4 border-primary/20 bg-primary/5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-foreground">How many days?</h3>
+                  <p className="text-xs text-muted-foreground">Set your trip duration</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setTripDays(Math.max(1, tripDays - 1))}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <Input 
+                    type="number" 
+                    value={tripDays} 
+                    onChange={(e) => setTripDays(Math.max(1, Math.min(30, parseInt(e.target.value) || 1)))}
+                    className="w-16 text-center h-8"
+                    min={1}
+                    max={30}
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => setTripDays(Math.min(30, tripDays + 1))}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
             <QuickSelectPills
               selectedPurposes={state.quickSelections.purposes}
               selectedTravelers={state.quickSelections.travelers}
@@ -196,7 +238,7 @@ export function PersonalizationChatInterface({
             <div className="flex gap-3">
               <Button
                 variant="outline"
-                onClick={onSkip}
+                onClick={handleSkip}
                 className="flex-1"
               >
                 Skip for now
