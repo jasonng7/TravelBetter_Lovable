@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSavedPlaces, useToggleSavePlace } from '@/hooks/useSavedPlaces';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { usePlaceWithTripInfo, usePlaceReviews } from '@/hooks/usePlaces';
 
 export default function PlaceDetailPage() {
   const { placeId } = useParams();
@@ -20,20 +21,35 @@ export default function PlaceDetailPage() {
   const { toast } = useToast();
   const [shareModalOpen, setShareModalOpen] = useState(false);
 
-  // Find the place from sample data
-  let place = null;
-  let tripInfo = null;
+  // Try to fetch from database first
+  const { data: dbData, isLoading } = usePlaceWithTripInfo(placeId);
+  const { data: dbReviews = [] } = usePlaceReviews(placeId);
+
+  // Fall back to sample data if not found in DB
+  let samplePlace = null;
+  let sampleTripInfo = null;
   
   for (const trip of sampleTrips) {
     for (const day of trip.itinerary) {
       const found = day.places.find(p => p.id === placeId);
       if (found) {
-        place = found;
-        tripInfo = { title: trip.title, author: trip.author, id: trip.id };
+        samplePlace = found;
+        sampleTripInfo = { title: trip.title, author: trip.author, id: trip.id };
         break;
       }
     }
-    if (place) break;
+    if (samplePlace) break;
+  }
+
+  const place = dbData?.place || samplePlace;
+  const tripInfo = dbData?.tripInfo || sampleTripInfo;
+  
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
   }
 
   if (!place) {
@@ -116,9 +132,10 @@ export default function PlaceDetailPage() {
 
   const shareUrl = `${window.location.origin}/place/${placeId}`;
 
-  const reviews = [
-    { id: 1, name: 'Alex K.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop', rating: 5, time: '2 days ago', text: 'Amazing atmosphere! The morning light was perfect.' },
-    { id: 2, name: 'Sarah M.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=50&h=50&fit=crop', rating: 4, time: '1 week ago', text: 'Beautiful but crowded. Go early!' },
+  // Use DB reviews if available, otherwise use sample reviews
+  const reviews = dbReviews.length > 0 ? dbReviews : [
+    { id: '1', name: 'Alex K.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop', rating: 5, time: '2 days ago', text: 'Amazing atmosphere! The morning light was perfect.' },
+    { id: '2', name: 'Sarah M.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=50&h=50&fit=crop', rating: 4, time: '1 week ago', text: 'Beautiful but crowded. Go early!' },
   ];
 
   return (
