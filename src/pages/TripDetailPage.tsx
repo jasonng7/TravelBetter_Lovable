@@ -12,6 +12,7 @@ import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, Copy } from 'lucide-
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTripDetail } from '@/hooks/useTripDetail';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
@@ -21,7 +22,20 @@ export default function TripDetailPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
   
-  const trip = sampleTrips.find(t => t.id === tripId);
+  // Try to fetch from database first
+  const { data: dbTrip, isLoading } = useTripDetail(tripId);
+  
+  // Fall back to sample data if not found in DB
+  const sampleTrip = sampleTrips.find(t => t.id === tripId);
+  const trip = dbTrip || sampleTrip;
+  
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
   
   if (!trip) {
     return (

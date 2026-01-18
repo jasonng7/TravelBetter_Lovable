@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BottomNav } from '@/components/navigation/BottomNav';
 import { Button } from '@/components/ui/button';
@@ -9,11 +9,14 @@ import { sampleTrips } from '@/data/sampleTrips';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { usePlaces } from '@/hooks/usePlaces';
+import { Place } from '@/types/trip';
 
 const categories = [
-  { id: 'restaurants', label: 'Restaurants', icon: '🍜' },
-  { id: 'parks', label: 'Parks', icon: '🌳' },
-  { id: 'shopping', label: 'Shopping', icon: '🛍️' },
+  { id: 'all', label: 'All', icon: '📍' },
+  { id: 'food', label: 'Restaurants', icon: '🍜' },
+  { id: 'nature', label: 'Parks', icon: '🌳' },
+  { id: 'shop', label: 'Shopping', icon: '🛍️' },
   { id: 'culture', label: 'Culture', icon: '🏛️' },
 ];
 
@@ -21,14 +24,25 @@ export default function ExplorePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [activeCategory, setActiveCategory] = useState('restaurants');
+  const [activeCategory, setActiveCategory] = useState('all');
   const [selectedPlace, setSelectedPlace] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Get places for display
-  const allPlaces = sampleTrips.flatMap(trip => 
-    trip.itinerary.flatMap(day => day.places)
+  // Fetch places from database
+  const { data: dbPlaces = [], isLoading } = usePlaces(activeCategory === 'all' ? undefined : activeCategory);
+
+  // Get sample places as fallback
+  const samplePlaces = useMemo(() => 
+    sampleTrips.flatMap(trip => trip.itinerary.flatMap(day => day.places)),
+    []
   );
+
+  // Combine DB places with sample places, prioritizing DB
+  const allPlaces: Place[] = useMemo(() => {
+    if (dbPlaces.length > 0) return dbPlaces;
+    if (activeCategory === 'all') return samplePlaces;
+    return samplePlaces.filter(p => p.category === activeCategory);
+  }, [dbPlaces, samplePlaces, activeCategory]);
   
   const displayPlace = selectedPlace 
     ? allPlaces.find(p => p.id === selectedPlace) 
