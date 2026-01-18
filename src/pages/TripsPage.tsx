@@ -7,9 +7,12 @@ import { Trip } from '@/types/trip';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, Plus, Plane } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ArrowLeft, Plus, Plane, Trash2, X, Loader2 } from 'lucide-react';
 import { useSavedTrips } from '@/hooks/useSavedTrips';
 import { useUserTrips, UserTrip } from '@/hooks/useUserTrips';
+import { useBatchDeleteTrips } from '@/hooks/useTripMutations';
+import { cn } from '@/lib/utils';
 
 // Convert UserTrip from DB to Trip format for TripCard
 function mapUserTripToTrip(userTrip: UserTrip): Trip {
@@ -38,7 +41,10 @@ export default function TripsPage() {
   const navigate = useNavigate();
   const { data: savedTripIds = [], isLoading: isSavedLoading } = useSavedTrips();
   const { data: userTrips = [], isLoading: isUserTripsLoading } = useUserTrips();
+  const batchDelete = useBatchDeleteTrips();
   const [activeTab, setActiveTab] = useState('created');
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedTripIds, setSelectedTripIds] = useState<Set<string>>(new Set());
 
   // Created trips from database
   const createdTrips = userTrips.filter(t => !sampleTrips.some(st => st.id === t.id)).map(mapUserTripToTrip);
@@ -51,6 +57,31 @@ export default function TripsPage() {
   const savedTrips = sampleTrips.filter(t => savedTripIds.includes(t.id));
   
   const isLoading = isSavedLoading || isUserTripsLoading;
+
+  const toggleSelection = (tripId: string) => {
+    setSelectedTripIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(tripId)) {
+        newSet.delete(tripId);
+      } else {
+        newSet.add(tripId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedTripIds.size === 0) return;
+    
+    await batchDelete.mutateAsync(Array.from(selectedTripIds));
+    setSelectedTripIds(new Set());
+    setIsSelectionMode(false);
+  };
+
+  const cancelSelection = () => {
+    setSelectedTripIds(new Set());
+    setIsSelectionMode(false);
+  };
 
   const EmptyState = ({ message, cta }: { message: string; cta?: string }) => (
     <Card className="flex flex-col items-center justify-center p-8 text-center">
@@ -68,6 +99,48 @@ export default function TripsPage() {
     </Card>
   );
 
+  const renderTripCard = (trip: Trip, showActions: boolean = false) => {
+    const isSelected = selectedTripIds.has(trip.id);
+    
+    return (
+      <div key={trip.id} className="relative">
+        {isSelectionMode && (
+          <div 
+            className="absolute left-3 top-3 z-10"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleSelection(trip.id);
+            }}
+          >
+            <Checkbox 
+              checked={isSelected}
+              className={cn(
+                "h-6 w-6 bg-white shadow-md border-2",
+                isSelected && "bg-primary border-primary"
+              )}
+            />
+          </div>
+        )}
+        <div className={cn(
+          "transition-all",
+          isSelectionMode && isSelected && "ring-2 ring-primary rounded-xl"
+        )}>
+          <TripCard 
+            trip={trip} 
+            onClick={() => {
+              if (isSelectionMode) {
+                toggleSelection(trip.id);
+              } else {
+                navigate(`/trip/${trip.id}`);
+              }
+            }}
+            showActions={showActions && !isSelectionMode}
+          />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
@@ -83,14 +156,42 @@ export default function TripsPage() {
           </Button>
           <h1 className="text-lg font-semibold">My Trips</h1>
         </div>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="rounded-full" 
-          onClick={() => navigate('/create')}
-        >
-          <Plus className="h-5 w-5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {isSelectionMode ? (
+            <>
+              <span className="text-sm text-muted-foreground">
+                {selectedTripIds.size} selected
+              </span>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={cancelSelection}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </>
+          ) : (
+            <>
+              {createdTrips.length > 0 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setIsSelectionMode(true)}
+                >
+                  Select
+                </Button>
+              )}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="rounded-full" 
+                onClick={() => navigate('/create')}
+              >
+                <Plus className="h-5 w-5" />
+              </Button>
+            </>
+          )}
+        </div>
       </header>
 
       {/* Tabs */}
@@ -121,14 +222,7 @@ export default function TripsPage() {
         <TabsContent value="created" className="p-4">
           {createdTrips.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {createdTrips.map((trip) => (
-                <TripCard 
-                  key={trip.id} 
-                  trip={trip} 
-                  onClick={() => navigate(`/trip/${trip.id}`)}
-                  showActions
-                />
-              ))}
+              {createdTrips.map((trip) => renderTripCard(trip, true))}
             </div>
           ) : (
             <EmptyState 
@@ -141,14 +235,7 @@ export default function TripsPage() {
         <TabsContent value="remixed" className="p-4">
           {remixedTrips.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {remixedTrips.map((trip) => (
-                <TripCard 
-                  key={trip.id} 
-                  trip={trip} 
-                  onClick={() => navigate(`/trip/${trip.id}`)}
-                  showActions
-                />
-              ))}
+              {remixedTrips.map((trip) => renderTripCard(trip, true))}
             </div>
           ) : (
             <EmptyState 
@@ -165,13 +252,7 @@ export default function TripsPage() {
             </div>
           ) : savedTrips.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {savedTrips.map((trip) => (
-                <TripCard 
-                  key={trip.id} 
-                  trip={trip} 
-                  onClick={() => navigate(`/trip/${trip.id}`)}
-                />
-              ))}
+              {savedTrips.map((trip) => renderTripCard(trip, false))}
             </div>
           ) : (
             <EmptyState 
@@ -181,6 +262,25 @@ export default function TripsPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Floating Delete Button */}
+      {isSelectionMode && selectedTripIds.size > 0 && (
+        <div className="fixed bottom-24 left-4 right-4 z-50">
+          <Button 
+            variant="destructive" 
+            className="w-full gap-2 rounded-xl py-6"
+            onClick={handleBatchDelete}
+            disabled={batchDelete.isPending}
+          >
+            {batchDelete.isPending ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Trash2 className="h-5 w-5" />
+            )}
+            Delete {selectedTripIds.size} Trip{selectedTripIds.size > 1 ? 's' : ''}
+          </Button>
+        </div>
+      )}
       
       <BottomNav />
     </div>

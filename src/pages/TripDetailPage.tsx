@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { sampleTrips } from '@/data/sampleTrips';
 import { DraggableTimeline } from '@/components/trip/DraggableTimeline';
 import { MapPlaceholder } from '@/components/trip/MapPlaceholder';
@@ -7,34 +8,38 @@ import { BottomNav } from '@/components/navigation/BottomNav';
 import { ShareModal } from '@/components/shared/ShareModal';
 import { AddToItineraryDialog } from '@/components/trip/AddToItineraryDialog';
 import { AnchorSelector } from '@/components/trip/AnchorSelector';
-import { EditModeBar } from '@/components/trip/EditModeBar';
 import { AddPlacesOptionsDialog } from '@/components/trip/AddPlacesOptionsDialog';
 import { AttributionBadge } from '@/components/trip/AttributionBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil } from 'lucide-react';
+import { ArrowLeft, MoreHorizontal, Plus, Share2, ListPlus, GitFork, Home, User, Sparkles, Pencil, Save, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTripDetail } from '@/hooks/useTripDetail';
 import { useTripEdit } from '@/hooks/useTripEdit';
 import { useRemixTrip } from '@/hooks/useRemixTrip';
+import { useCreateDayItinerary } from '@/hooks/useUserTrips';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function TripDetailPage() {
   const { tripId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const [activeDay, setActiveDay] = useState(1);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [addToItineraryOpen, setAddToItineraryOpen] = useState(false);
   const [anchorSelectorOpen, setAnchorSelectorOpen] = useState(false);
   const [addPlacesDialogOpen, setAddPlacesDialogOpen] = useState(false);
+  const [isAddingDay, setIsAddingDay] = useState(false);
   
   // Try to fetch from database first
   const { data: dbTrip, isLoading } = useTripDetail(tripId);
   
   // Must call all hooks before any early returns
   const remixMutation = useRemixTrip();
+  const createDayItinerary = useCreateDayItinerary();
   
   // Fall back to sample data if not found in DB
   const sampleTrip = sampleTrips.find(t => t.id === tripId);
@@ -109,6 +114,47 @@ export default function TripDetailPage() {
     setAddToItineraryOpen(true);
   };
 
+  const handleAddDay = async () => {
+    if (!user) {
+      toast.info('Please sign in to add days');
+      navigate('/auth');
+      return;
+    }
+    
+    if (!tripId || !isOwner) {
+      toast.error('You can only add days to your own trips');
+      return;
+    }
+
+    setIsAddingDay(true);
+    try {
+      const nextDayNumber = itinerary.length + 1;
+      
+      // Create the new day
+      await createDayItinerary.mutateAsync({ 
+        tripId, 
+        dayNumber: nextDayNumber 
+      });
+      
+      // Update trip duration
+      await supabase
+        .from('trips')
+        .update({ duration: nextDayNumber })
+        .eq('id', tripId);
+      
+      // Invalidate queries
+      await queryClient.invalidateQueries({ queryKey: ['trip-detail', tripId] });
+      
+      setActiveDay(nextDayNumber);
+      toast.success(`Day ${nextDayNumber} added!`);
+    } catch (error) {
+      console.error('Error adding day:', error);
+      toast.error('Failed to add day');
+    } finally {
+      setIsAddingDay(false);
+    }
+  };
+
 
   const handleCopyTrip = async () => {
     if (!user) {
@@ -152,16 +198,24 @@ export default function TripDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {isOwner && (
-            <EditModeBar
-              isEditMode={isEditMode}
-              isSaving={isSaving}
-              hasAnchor={!!anchorPlaceId}
-              onToggleEdit={toggleEditMode}
-              onSave={saveChanges}
-              onDiscard={discardChanges}
-              onSelectAnchor={() => setAnchorSelectorOpen(true)}
-            />
+          {/* Edit Mode Header Actions */}
+          {isEditMode && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAnchorSelectorOpen(true)}
+                className={cn(
+                  "gap-2",
+                  anchorPlaceId 
+                    ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-400" 
+                    : "border-dashed"
+                )}
+              >
+                <Home className="h-4 w-4" />
+                {anchorPlaceId ? 'Anchor' : 'Set Anchor'}
+              </Button>
+            </div>
           )}
           {!isEditMode && (
             <>
@@ -196,35 +250,40 @@ export default function TripDetailPage() {
         </div>
       )}
 
-      {/* Day Selector Tabs */}
-      <div className="no-scrollbar flex gap-2 overflow-x-auto border-b px-4 py-3">
-        {itinerary.map((day) => (
-          <button
-            key={day.day}
-            onClick={() => setActiveDay(day.day)}
-            className={cn(
-              'flex-shrink-0 rounded-full px-5 py-2 text-sm font-medium transition-all',
-              activeDay === day.day
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'border border-border bg-card text-muted-foreground hover:bg-muted'
-            )}
-          >
-            Day {day.day}
-          </button>
-        ))}
-        <button 
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground hover:text-foreground"
-          onClick={() => {
-            if (!user) {
-              toast.info('Please sign in to add days');
-              navigate('/auth');
-              return;
-            }
-            toast.info('Add day feature coming soon!');
-          }}
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+      {/* Day Selector Tabs - Responsive */}
+      <div className="border-b px-4 py-3">
+        <div className="flex flex-wrap gap-2">
+          {itinerary.map((day) => (
+            <button
+              key={day.day}
+              onClick={() => setActiveDay(day.day)}
+              className={cn(
+                'rounded-full px-4 py-2 text-sm font-medium transition-all',
+                activeDay === day.day
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'border border-border bg-card text-muted-foreground hover:bg-muted'
+              )}
+            >
+              Day {day.day}
+            </button>
+          ))}
+          {isOwner && (
+            <button 
+              className={cn(
+                "flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground hover:border-muted-foreground hover:text-foreground transition-colors",
+                isAddingDay && "opacity-50 pointer-events-none"
+              )}
+              onClick={handleAddDay}
+              disabled={isAddingDay}
+            >
+              {isAddingDay ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Map Section */}
@@ -314,7 +373,36 @@ export default function TripDetailPage() {
         )}
       </div>
 
-      {/* Bottom Action Bar */}
+      {/* Bottom Action Bar - Edit Mode */}
+      {isEditMode && (
+        <div className="fixed bottom-20 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-lg gap-3">
+            <Button 
+              variant="outline" 
+              className="flex-1 gap-2 rounded-xl"
+              onClick={discardChanges}
+              disabled={isSaving}
+            >
+              <X className="h-4 w-4" />
+              Cancel
+            </Button>
+            <Button 
+              className="flex-1 gap-2 rounded-xl bg-green-600 hover:bg-green-700"
+              onClick={saveChanges}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Action Bar - Normal Mode */}
       {!isEditMode && (
         <div className="fixed bottom-20 left-0 right-0 z-40 border-t bg-background/95 px-4 py-3 backdrop-blur-sm">
           <div className="mx-auto flex max-w-lg gap-3">

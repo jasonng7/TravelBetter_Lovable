@@ -7,9 +7,10 @@ import { DestinationCard } from '@/components/home/DestinationCard';
 import { sampleTrips } from '@/data/sampleTrips';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Heart } from 'lucide-react';
+import { ArrowRight, Heart, GitFork } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSavedTrips, useToggleSaveTrip } from '@/hooks/useSavedTrips';
+import { useRemixTrip } from '@/hooks/useRemixTrip';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -27,6 +28,7 @@ export default function HomePage() {
   const { user } = useAuth();
   const { data: savedTripIds = [] } = useSavedTrips();
   const toggleSaveTrip = useToggleSaveTrip();
+  const remixMutation = useRemixTrip();
   const { toast } = useToast();
 
   const [activeFilter, setActiveFilter] = useState('All');
@@ -61,6 +63,27 @@ export default function HomePage() {
 
     const isSaved = savedTripIds.includes(tripId);
     toggleSaveTrip.mutate({ tripId, isSaved });
+  };
+
+  const handleRemixClick = async (e: React.MouseEvent, trip: typeof sampleTrips[0]) => {
+    e.stopPropagation();
+    
+    if (!user) {
+      toast({
+        title: 'Sign in required',
+        description: 'Please sign in to remix trips.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+
+    try {
+      const newTripId = await remixMutation.mutateAsync(trip);
+      navigate(`/trip/${newTripId}`);
+    } catch (error) {
+      console.error('Error remixing trip:', error);
+    }
   };
 
   return (
@@ -172,16 +195,30 @@ export default function HomePage() {
                     </Badge>
                   </div>
                   
-                  {/* Heart Icon */}
-                  <button 
-                    className="absolute right-2 top-2 rounded-full bg-white/80 p-1.5 backdrop-blur-sm transition-colors hover:bg-white"
-                    onClick={(e) => handleHeartClick(e, trip.id)}
-                  >
-                    <Heart className={cn(
-                      "h-4 w-4 transition-colors",
-                      isSaved ? "fill-red-500 text-red-500" : "text-foreground"
-                    )} />
-                  </button>
+                  {/* Action Icons */}
+                  <div className="absolute right-2 top-2 flex flex-col gap-2">
+                    {/* Heart Icon */}
+                    <button 
+                      className="rounded-full bg-white/80 p-1.5 backdrop-blur-sm transition-colors hover:bg-white"
+                      onClick={(e) => handleHeartClick(e, trip.id)}
+                    >
+                      <Heart className={cn(
+                        "h-4 w-4 transition-colors",
+                        isSaved ? "fill-red-500 text-red-500" : "text-foreground"
+                      )} />
+                    </button>
+                    
+                    {/* Remix Icon */}
+                    <button 
+                      className={cn(
+                        "rounded-full bg-white/80 p-1.5 backdrop-blur-sm transition-colors hover:bg-white",
+                        remixMutation.isPending && "opacity-50 pointer-events-none"
+                      )}
+                      onClick={(e) => handleRemixClick(e, trip)}
+                    >
+                      <GitFork className="h-4 w-4 text-foreground" />
+                    </button>
+                  </div>
 
                   {/* Bottom Content */}
                   <div className="p-3">

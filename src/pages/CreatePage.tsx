@@ -178,20 +178,21 @@ export default function CreatePage() {
     setStep('personalization');
   };
 
-  const handlePersonalizationComplete = (selectedPlaces: AISuggestion[]) => {
+  const handlePersonalizationComplete = (selectedPlaces: AISuggestion[], days: number) => {
     setAiSelectedPlaces(selectedPlaces);
-    handleGenerateTrip(selectedPlaces);
+    handleGenerateTrip(selectedPlaces, days);
   };
 
-  const handlePersonalizationSkip = () => {
-    handleGenerateTrip([]);
+  const handlePersonalizationSkip = (days: number) => {
+    handleGenerateTrip([], days);
   };
 
-  const handleGenerateTrip = async (aiPlaces: AISuggestion[]) => {
+  const handleGenerateTrip = async (aiPlaces: AISuggestion[], days?: number) => {
     setStep('generating');
     
     // Parse user description
     const parsed = parseDescription(tripDescription);
+    const finalDuration = days || parsed.duration;
     
     // Combine imported and AI-selected places into PlaceInput objects
     const importedPlaceInputs: PlaceInput[] = extractedPlaces
@@ -217,7 +218,7 @@ export default function CreatePage() {
     
     // Create title from description or destination
     const title = tripDescription.length > 50 
-      ? `${parsed.duration} Days in ${parsed.destination}`
+      ? `${finalDuration} Days in ${parsed.destination}`
       : tripDescription || `Trip to ${parsed.destination}`;
     
     try {
@@ -226,7 +227,7 @@ export default function CreatePage() {
           title,
           destination: parsed.destination,
           country: parsed.country,
-          duration: parsed.duration,
+          duration: finalDuration,
           places: allPlaces,
         },
         {
